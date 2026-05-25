@@ -1,73 +1,176 @@
-import os
 import cv2
+import numpy as np
+import os
 
-dataset_path = "datasets/images"
-output_path = "outlines"
+# Dataset folder
+input_root = "datasets/images"
 
-os.makedirs(output_path, exist_ok=True)
+# Output folders
+gray_root = "processed/grayscale"
+edge_root = "processed/edges"
+silhouette_root = "processed/silhouettes"
+contour_root = "processed/contours"
 
-for pokemon in os.listdir(dataset_path):
+# Create output folders
+os.makedirs(gray_root, exist_ok=True)
+os.makedirs(edge_root, exist_ok=True)
+os.makedirs(silhouette_root, exist_ok=True)
+os.makedirs(contour_root, exist_ok=True)
 
-    pokemon_folder = os.path.join(
-        dataset_path,
-        pokemon
+# Loop through all pokemon folders
+for pokemon_name in os.listdir(input_root):
+
+    pokemon_input_path = os.path.join(
+        input_root,
+        pokemon_name
     )
 
-    if not os.path.isdir(pokemon_folder):
+    if not os.path.isdir(pokemon_input_path):
         continue
 
-    save_folder = os.path.join(
-        output_path,
-        pokemon
+    # Create pokemon output folders
+    gray_pokemon_path = os.path.join(
+        gray_root,
+        pokemon_name
     )
 
-    os.makedirs(save_folder, exist_ok=True)
+    edge_pokemon_path = os.path.join(
+        edge_root,
+        pokemon_name
+    )
 
-    for image_name in os.listdir(pokemon_folder):
+    silhouette_pokemon_path = os.path.join(
+        silhouette_root,
+        pokemon_name
+    )
 
-        if not image_name.endswith(
-            (".jpg", ".png", ".jpeg")
-        ):
-            continue
+    contour_pokemon_path = os.path.join(
+        contour_root,
+        pokemon_name
+    )
+
+    os.makedirs(gray_pokemon_path, exist_ok=True)
+    os.makedirs(edge_pokemon_path, exist_ok=True)
+    os.makedirs(silhouette_pokemon_path, exist_ok=True)
+    os.makedirs(contour_pokemon_path, exist_ok=True)
+
+    # Process every image
+    for filename in os.listdir(pokemon_input_path):
 
         image_path = os.path.join(
-            pokemon_folder,
-            image_name
+            pokemon_input_path,
+            filename
         )
 
         img = cv2.imread(image_path)
 
         if img is None:
+            print(f"Failed to load {image_path}")
             continue
 
-        # Resize
-        img = cv2.resize(img, (256,256))
+        # Resize image
+        img = cv2.resize(img, (256, 256))
 
-        # Grayscale
+        # Convert to grayscale
         gray = cv2.cvtColor(
             img,
             cv2.COLOR_BGR2GRAY
         )
 
-        # Blur
+        # Blur image
         blur = cv2.GaussianBlur(
             gray,
             (5,5),
             0
         )
 
-        # Edge Detection
+        # Edge detection
         edges = cv2.Canny(
             blur,
-            100,
-            200
+            50,
+            150
         )
 
-        save_path = os.path.join(
-            save_folder,
-            image_name
+        # Morphological closing
+        kernel = np.ones((5,5), np.uint8)
+
+        closed = cv2.morphologyEx(
+            edges,
+            cv2.MORPH_CLOSE,
+            kernel
         )
 
-        cv2.imwrite(save_path, edges)
+        # Find contours
+        contours, _ = cv2.findContours(
+            closed,
+            cv2.RETR_EXTERNAL,
+            cv2.CHAIN_APPROX_SIMPLE
+        )
 
-print("Outline dataset created!")
+        # Create blank images
+        silhouette = np.zeros_like(gray)
+
+        contour_image = np.zeros_like(gray)
+
+        # Draw largest contour
+        if contours:
+
+            largest_contour = max(
+                contours,
+                key=cv2.contourArea
+            )
+
+            # Filled silhouette
+            cv2.drawContours(
+                silhouette,
+                [largest_contour],
+                -1,
+                255,
+                thickness=cv2.FILLED
+            )
+
+            # Contour outline
+            cv2.drawContours(
+                contour_image,
+                [largest_contour],
+                -1,
+                255,
+                thickness=2
+            )
+
+        # Save all outputs
+        cv2.imwrite(
+            os.path.join(
+                gray_pokemon_path,
+                filename
+            ),
+            gray
+        )
+
+        cv2.imwrite(
+            os.path.join(
+                edge_pokemon_path,
+                filename
+            ),
+            edges
+        )
+
+        cv2.imwrite(
+            os.path.join(
+                silhouette_pokemon_path,
+                filename
+            ),
+            silhouette
+        )
+
+        cv2.imwrite(
+            os.path.join(
+                contour_pokemon_path,
+                filename
+            ),
+            contour_image
+        )
+
+        print(f"Processed: {pokemon_name}/{filename}")
+
+print("All preprocessing completed!")
